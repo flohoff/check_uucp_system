@@ -62,9 +62,10 @@ if (!defined($status)) {
 	$p->nagios_exit(UNKNOWN, sprintf("System %s unknown", $p->opts->system));
 }
 
-if ($status->{istat} != 0) {
-	$p->nagios_exit(CRITICAL, sprintf("System %s %s seconds ago failed: %s ",
-		$p->opts->system, $status->{age}, $status->{statusstring}));
+if ($status->{istat} != 0 && $status->{istat} != 5) {
+	$p->nagios_exit(CRITICAL, sprintf("System %s %s seconds ago failed: %s(%d) ",
+		$p->opts->system, $status->{age}, $status->{statusstring},
+		$status->{istat}));
 }
 
 $p->check_threshold(
