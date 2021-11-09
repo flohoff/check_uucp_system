@@ -1,0 +1,81 @@
+#!/usr/bin/perl -w
+
+use strict;
+use Monitoring::Plugin;
+use File::Slurp;
+use Data::Dumper;
+
+sub uucp_status_read {
+	my ($sysname) = @_;
+
+	my $filename=sprintf("/var/spool/uucp/.Status/%s", $sysname);
+	my $f=read_file($filename, err_mode => "quiet");
+
+	if (!defined($f)) {
+		return undef;
+	}
+
+	chomp($f);
+
+	my ($istat, $retries, $last, $status, $statusstring) = split(/ /, $f, 5);
+
+	my $result={
+		istat => $istat,
+		retries => $retries,
+		age => time()-$last,
+		status => $status,
+		statusstring => $statusstring
+	};
+
+	return $result;
+}
+
+my $p = Monitoring::Plugin->new(
+	shortname => "uucp_system",
+	usage => "check_uucp_system -s system -w warning -c critical"
+);
+
+$p->add_arg(
+	spec => 'system|s=s',
+	help => '-s, --system=uucp system name',
+	required => 1
+);
+
+$p->add_arg(
+	spec => 'critical|c=s',
+	help => '-c, --critical=INTEGER',
+	default => 86400
+);
+
+$p->add_arg(
+	spec => 'warning|w=s',
+	help => '-w, --warning=INTEGER',
+	default => 43200
+);
+
+$p->getopts;
+
+my $value=100;
+my $status=uucp_status_read($p->opts->system);
+
+if (!defined($status)) {
+	$p->nagios_exit(UNKNOWN, sprintf("System %s unknown", $p->opts->system));
+}
+
+if ($status->{istat} != 0) {
+	$p->nagios_exit(CRITICAL, sprintf("System %s %s seconds ago failed: %s ",
+		$p->opts->system, $status->{age}, $status->{statusstring}));
+}
+
+$p->check_threshold(
+	check => $status->{age}, 
+	warning => "0:" . $p->opts->warning, 
+	critical => "0:" . $p->opts->critical);
+
+$p->add_message(OK, sprintf("system called %s seconds ago (max %ss/%ss)",
+	$status->{age}, $p->opts->warning, $p->opts->critical));
+
+my ($code,$message)=$p->check_messages();
+$p->nagios_exit($code,$message);
+
+
